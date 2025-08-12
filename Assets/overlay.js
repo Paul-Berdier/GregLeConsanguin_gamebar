@@ -1,61 +1,153 @@
-// overlay.js
+// overlay.js — overlay avec OAuth (utilise /api/me pour connaître l’utilisateur)
 
-// ✅ Railway public URL par défaut (HTTPS)
-const DEFAULT_SERVER = "https://TON-SOUS-DOMAINE.up.railway.app";
+// Par défaut: même origine (recommandé pour les cookies de session). Tu peux sauvegarder un autre domaine.
+const DEFAULT_SERVER = window.location.origin;
 
-// État (persisté dans localStorage)
 let serverUrl = localStorage.getItem('greg_server') || DEFAULT_SERVER;
 let guildId   = localStorage.getItem('greg_guild')  || "";
-let userId    = localStorage.getItem('greg_user')   || "";
+let userId    = "";      // vient de /api/me si connecté
+let repeatAll = false;
+let socket    = null;
 
-let socket = null;
-
-// ----- Helpers UI -----
+// ---------- Helpers ----------
 function setStatus(msg, ok = true) {
-  const el = document.getElementById('status');
+  const el = document.getElementById('statusMessage');
   if (!el) return;
   el.textContent = msg || '';
-  el.style.color = ok ? '#8f8' : '#f88';
+  el.className = 'status-message ' + (ok ? 'status-success' : 'status-error');
 }
-
+function fmtTime(s) {
+  if (s == null || isNaN(s)) return "0:00";
+  s = Math.max(0, parseInt(s, 10) || 0);
+  const m = Math.floor(s / 60), ss = String(s % 60).padStart(2, '0');
+  return `${m}:${ss}`;
+}
+function setPlayPauseVisual(isPaused) {
+  const btn = document.getElementById('playPauseBtn');
+  if (!btn) return;
+  if (isPaused) { btn.textContent = '▶️'; btn.title = 'Lecture'; }
+  else          { btn.textContent = '⏸️'; btn.title = 'Pause';   }
+}
+function applyRepeatVisual() {
+  const btn = document.getElementById('repeatBtn');
+  if (btn) btn.classList.toggle('active', !!repeatAll);
+}
 function safeURL(str) {
   try { return new URL(str); } catch {}
-  // Si l’user a oublié https:// on tente d’ajouter
-  try { return new URL('https://' + str.replace(/^\/+/, '')); } catch {}
+  try { return new URL('https://' + String(str).replace(/^\/+/, '')); } catch {}
   return null;
 }
+async function fetchJSON(url) {
+  const r = await fetch(url, { credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
 
-function parseAndSaveConfig(inputStr) {
-  const u = safeURL(inputStr.trim());
-  if (!u) { setStatus("URL invalide.", false); return false; }
+// ---------- OAuth awareness ----------
+async function fetchMe() {
+  try {
+    const me = await fetchJSON(`${serverUrl}/api/me`);
+    const authBlock = document.getElementById('authBlock');
+    const loginBtn  = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (me && me.auth) {
+      userId = me.id;
+      authBlock.textContent = `Connecté : ${me.username}`;
+      authBlock.className = 'status-message status-success';
+      loginBtn.style.display  = 'none';
+      logoutBtn.style.display = 'inline-block';
+    } else {
+      userId = "";
+      authBlock.textContent = "Non connecté — utilisez Discord OAuth.";
+      authBlock.className = 'status-message status-error';
+      loginBtn.style.display  = 'inline-block';
+      logoutBtn.style.display = 'none';
+    }
+  } catch {
+    // si l’URL n’est pas le même domaine, la session ne sera pas transmise
+    userId = "";
+    const authBlock = document.getElementById('authBlock');
+    const loginBtn  = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    authBlock.textContent = "Session indisponible (utilisez le même domaine que le serveur pour OAuth).";
+    authBlock.className = 'status-message status-error';
+    loginBtn.style.display  = 'inline-block';
+    logoutBtn.style.display = 'none';
+  }
+}
 
-  // Server = origine (https://host)
-  const nextServer = u.origin;
-
-  // guild/user depuis query (?guild=...&user=...) ou alias ?g=...&u=...
-  const qp = u.searchParams;
-  const nextGuild = qp.get('guild') || qp.get('g') || guildId;
-  const nextUser  = qp.get('user')  || qp.get('u') || userId;
-
-  // Sauvegarde
-  serverUrl = nextServer;
-  guildId   = nextGuild || "";
-  userId    = nextUser  || "";
-
+// ---------- Config logique ----------
+async function fetchGuilds() {
+  try {
+    const r = await fetch(`${serverUrl}/api/guilds`, { credentials: 'include' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (e) {
+    setStatus(`Impossible de charger les serveurs: ${e}`, false);
+    return [];
+  }
+}
+async function populateGuildSelect() {
+  const sel = document.getElementById('configGuild');
+  if (!sel) return;
+  sel.innerHTML = `<option value="">— Chargement… —</option>`;
+  const items = await fetchGuilds();
+  sel.innerHTML = '';
+  if (!items.length) {
+    sel.innerHTML = `<option value="">(Aucun serveur trouvé)</option>`;
+    return;
+  }
+  for (const g of items) {
+    const opt = document.createElement('option');
+    opt.value = String(g.id);
+    opt.textContent = `${g.name} (${g.id})`;
+    sel.appendChild(opt);
+  }
+  if (guildId) sel.value = String(guildId);
+}
+async function applyServerFromInput() {
+  const input = document.getElementById('configServerInput');
+  const val = (input?.value || '').trim();
+  const u = safeURL(val || serverUrl || DEFAULT_SERVER);
+  if (!u) { setStatus("URL de serveur invalide.", false); return false; }
+  serverUrl = u.origin;
   localStorage.setItem('greg_server', serverUrl);
-  localStorage.setItem('greg_guild',  guildId);
-  localStorage.setItem('greg_user',   userId);
-
-  setStatus(`Config OK → serveur: ${serverUrl}  |  guild: ${guildId || '—'}  |  user: ${userId || '—'}`);
+  await fetchMe();
+  await populateGuildSelect();
+  setStatus(`Serveur défini: ${serverUrl}`);
   reconnectSocket();
   return true;
 }
-
-// ----- Autocomplete -----
-const SUGG_MAX = 3;
-function debounce(fn, delay = 250) {
-  let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+function saveConfig() {
+  const selGuild = document.getElementById('configGuild');
+  guildId = (selGuild?.value || '').trim();
+  localStorage.setItem('greg_guild', guildId);
+  if (!guildId) return setStatus("Choisis un serveur.", false);
+  if (!userId)  setStatus("Note: pas connecté — /api/play exigera user_id.", false);
+  else          setStatus(`Config OK → serveur: ${serverUrl} | guild: ${guildId}`);
 }
+function apiPost(endpoint, payload) {
+  return fetch(`${serverUrl}${endpoint}`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    credentials: 'include',
+    body: JSON.stringify(payload || {})
+  });
+}
+function apiAction(action) {
+  if (!guildId) { setStatus('guild_id manquant.', false); return; }
+  return apiPost(`/api/${action}`, { guild_id: guildId }).catch(e => console.warn('API error', e));
+}
+function addTrack(text) {
+  if (!text || !guildId) { setStatus('Config incomplète (guild).', false); return; }
+  // user_id omis si Oauth présent (serveur lira la session). Sinon, on tombera en erreur (normal).
+  const body = { title: text, url: text, guild_id: guildId };
+  return apiPost('/api/play', body).catch(e => console.warn('API error', e));
+}
+
+// ---------- Autocomplete ----------
+const SUGG_MAX = 3;
+function debounce(fn, delay = 250) { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),delay);} }
 function clearSuggestions() {
   const box = document.getElementById('suggestions');
   if (!box) return; box.innerHTML = ''; box.classList.add('hidden');
@@ -66,132 +158,182 @@ function renderSuggestions(items) {
   box.innerHTML = '';
   if (!items || items.length === 0) { box.classList.add('hidden'); return; }
   items.slice(0, SUGG_MAX).forEach(it => {
-    const li = document.createElement('li');
-    li.textContent = it.title || it.url || 'Sans titre';
-    li.onclick = () => {
+    const div = document.createElement('div');
+    div.className = 'suggestion-item';
+    div.innerHTML = `
+      <div class="suggestion-title">${it.title || it.url || 'Sans titre'}</div>
+      <div class="suggestion-info">${(it.url || it.webpage_url || '').replace(/^https?:\/\//,'')}</div>
+    `;
+    div.onclick = () => {
       addTrack(it.url || it.webpage_url || it.title || '');
       clearSuggestions();
-      const entry = document.getElementById('entry'); if (entry) entry.value = '';
+      const input = document.getElementById('urlInput');
+      if (input) input.value = '';
     };
-    box.appendChild(li);
+    box.appendChild(div);
   });
   box.classList.remove('hidden');
 }
 async function fetchSuggestions(q) {
-  const base = serverUrl || DEFAULT_SERVER;
-  const url = `${base}/autocomplete?q=${encodeURIComponent(q)}`;
   try {
-    const r = await fetch(url, { method: 'GET' });
+    const r = await fetch(`${serverUrl}/autocomplete?q=${encodeURIComponent(q)}`, { credentials: 'include' });
     if (!r.ok) return [];
     const data = await r.json();
     return Array.isArray(data.results) ? data.results.slice(0, SUGG_MAX) : [];
   } catch { return []; }
 }
 
-// ----- Socket.IO -----
+// ---------- Socket.IO ----------
 function connectSocket() {
   if (!serverUrl) return;
   try {
-    socket = io(serverUrl, { transports: ['websocket'], reconnection: true });
+    socket = io(serverUrl, { transports: ['websocket'], reconnection: true, withCredentials: true });
     socket.on('connect',    () => setStatus(`Connecté à ${serverUrl}`));
     socket.on('disconnect', () => setStatus(`Déconnecté de ${serverUrl}`, false));
-    socket.on('playlist_update', payload => updatePlaylist(payload));
+    socket.on('playlist_update', payload => updateUI(payload));
   } catch (e) {
     console.error('Socket.IO error:', e);
     setStatus('Erreur Socket.IO', false);
   }
 }
 function reconnectSocket() {
-  if (socket) {
-    try { socket.disconnect(); } catch {}
-    socket = null;
+  if (socket) { try { socket.disconnect(); } catch {} socket = null; }
+  connectSocket();
+}
+
+// ---------- UI Update ----------
+function updateUI(data) {
+  const queueEl = document.getElementById('queueList');
+  queueEl.innerHTML = '';
+  const queue = (data && data.queue) || [];
+  const current = data && data.current;
+
+  queue.forEach((it, i) => {
+    const row = document.createElement('div');
+    row.className = 'queue-item' + ((current && (current.url === it.url || current.title === it.title)) ? ' playing' : '');
+    row.innerHTML = `
+      <div class="queue-number">${i+1}</div>
+      <div class="queue-info"><div class="queue-track">${it.title || it.url}</div></div>
+      <div class="queue-duration">${it.duration ? fmtTime(it.duration) : ''}</div>
+      <button class="queue-remove" title="Retirer (bientôt)">✕</button>
+    `;
+    queueEl.appendChild(row);
+  });
+
+  const titleEl = document.getElementById('trackTitle');
+  const artistEl = document.getElementById('trackArtist');
+  const artwork  = document.getElementById('artwork');
+  const prog = data && data.progress || {};
+  const elapsed = prog.elapsed ?? 0;
+  const duration = prog.duration ?? 0;
+
+  if (current) {
+    titleEl.textContent = current.title || 'Sans titre';
+    artistEl.textContent = current.url || '';
+  } else {
+    titleEl.textContent = 'Aucune piste';
+    artistEl.textContent = 'En attente...';
   }
-  connectSocket();
+
+  if (data && data.thumbnail) {
+    artwork.style.backgroundImage = `url("${data.thumbnail}")`;
+    artwork.textContent = '';
+    artwork.classList.add('has-img');
+  } else {
+    artwork.style.backgroundImage = '';
+    artwork.textContent = '🎵';
+    artwork.classList.remove('has-img');
+  }
+
+  document.getElementById('currentTime').textContent = fmtTime(elapsed);
+  document.getElementById('totalTime').textContent   = duration ? fmtTime(duration) : "0:00";
+  const pct = (duration > 0) ? Math.min(100, Math.floor(elapsed*100/duration)) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+
+  setPlayPauseVisual(data && data.is_paused);
+
+  if (typeof data.repeat_all === 'boolean') {
+    repeatAll = data.repeat_all;
+    applyRepeatVisual();
+  }
+
+  const disabled = !guildId;
+  for (const id of ['stopBtn','prevBtn','playPauseBtn','nextBtn','repeatBtn','addBtn']) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disabled;
+  }
 }
 
-// ----- Playlist -----
-function updatePlaylist(data) {
-  const list = document.getElementById('playlist');
-  list.innerHTML = '';
-  const q = (data && data.queue) || [];
-  const cur = data && data.current;
-  q.forEach((item, i) => {
-    const li = document.createElement('li');
-    li.textContent = `${i + 1}. ${item.title || item.url}`;
-    if (cur && (cur.url === item.url || cur.title === item.title)) li.classList.add('playing');
-    list.appendChild(li);
+// ---------- DOM Ready ----------
+window.addEventListener('DOMContentLoaded', async () => {
+  const serverInput = document.getElementById('configServerInput');
+  if (serverInput) serverInput.value = serverUrl || '';
+  document.getElementById('settingsToggle').addEventListener('click', () => document.getElementById('configPanel').classList.toggle('hidden'));
+  document.getElementById('configClose').addEventListener('click', () => document.getElementById('configPanel').classList.add('hidden'));
+  document.getElementById('configSave').addEventListener('click', saveConfig);
+  document.getElementById('configReload').addEventListener('click', () => populateGuildSelect());
+
+  // OAuth state + guilds
+  await fetchMe();
+  await populateGuildSelect();
+
+  // Collapse
+  const player = document.getElementById('playerContainer');
+  const collapseBtn = document.getElementById('collapseBtn');
+  collapseBtn.addEventListener('click', () => {
+    player.classList.toggle('collapsed');
+    collapseBtn.textContent = player.classList.contains('collapsed') ? '▲' : '▼';
   });
-}
 
-// ----- API calls -----
-function apiCall(action, body = {}) {
-  if (!serverUrl || !guildId) { setStatus('Config incomplète (serveur/guild).', false); return; }
-  fetch(`${serverUrl}/api/${action}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ guild_id: guildId, ...body })
-  }).catch(err => console.warn('API error', err));
-}
-function addTrack(text) {
-  if (!text || !serverUrl || !guildId || !userId) { setStatus('Config incomplète (serveur/guild/user).', false); return; }
-  fetch(`${serverUrl}/api/play`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: text, url: text, guild_id: guildId, user_id: userId })
-  }).catch(err => console.warn('API error', err));
-}
-
-// ----- Boot -----
-window.addEventListener('DOMContentLoaded', () => {
-  // Préremplis l’input avec la valeur actuelle
-  const cfg = document.getElementById('configInput');
-  if (cfg) cfg.value = serverUrl + (guildId ? `/?guild=${guildId}` : '') + (userId ? `${guildId ? '&' : '/?'}user=${userId}` : '');
-
-  document.getElementById('saveConfig')?.addEventListener('click', () => {
-    const ok = parseAndSaveConfig(cfg.value || '');
-    if (!ok) return;
-  });
-  cfg?.addEventListener('keydown', (e) => {
+  // Input + suggestions
+  const urlInput = document.getElementById('urlInput');
+  const addBtn = document.getElementById('addBtn');
+  urlInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
-      parseAndSaveConfig(cfg.value || '');
-      e.preventDefault();
-    }
-  });
-
-  // Connexion socket
-  connectSocket();
-  setStatus(serverUrl ? `Prêt (serveur: ${serverUrl})` : 'Serveur non défini', !!serverUrl);
-
-  // Saisie + autocomplete
-  const entry = document.getElementById('entry');
-  entry.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      const first = document.querySelector('#suggestions li');
+      const first = document.querySelector('#suggestions .suggestion-item');
       if (first) { first.click(); e.preventDefault(); return; }
-      addTrack(entry.value.trim());
-      entry.value = '';
+      addTrack(urlInput.value.trim());
+      urlInput.value = '';
       clearSuggestions();
     }
     if (e.key === 'Escape') clearSuggestions();
   });
-  entry.addEventListener('input', debounce(async () => {
-    const q = entry.value.trim();
+  urlInput.addEventListener('input', debounce(async () => {
+    const q = urlInput.value.trim();
     if (q.length < 3) { clearSuggestions(); return; }
-    const sugg = await fetchSuggestions(q);
-    renderSuggestions(sugg);
+    renderSuggestions(await fetchSuggestions(q));
   }, 250));
+  addBtn.addEventListener('click', () => {
+    const v = urlInput.value.trim();
+    if (!v) return;
+    addTrack(v);
+    urlInput.value = '';
+    clearSuggestions();
+  });
   document.addEventListener('click', (ev) => {
     const s = document.getElementById('suggestions');
     if (!s) return;
-    if (!s.contains(ev.target) && ev.target !== entry) clearSuggestions();
+    if (!s.contains(ev.target) && ev.target !== urlInput) clearSuggestions();
   });
 
-  // Boutons
-  document.querySelectorAll('button[data-action]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const action = btn.getAttribute('data-action');
-      apiCall(action);
-      clearSuggestions();
-    });
+  // Controls
+  document.getElementById('stopBtn').addEventListener('click', () => apiAction('stop'));
+  document.getElementById('nextBtn').addEventListener('click', () => apiAction('skip'));
+  document.getElementById('playPauseBtn').addEventListener('click', () => apiAction('toggle_pause'));
+  document.getElementById('prevBtn').addEventListener('click', () => apiAction('restart'));
+  document.getElementById('repeatBtn').addEventListener('click', async () => {
+    if (!guildId) { setStatus('guild_id manquant.', false); return; }
+    try {
+      const res = await apiPost('/api/repeat', { guild_id: guildId });
+      const json = await res.json().catch(() => ({}));
+      if (typeof json.repeat_all === 'boolean') {
+        repeatAll = json.repeat_all;
+        applyRepeatVisual();
+      }
+    } catch (e) { console.warn(e); }
   });
+
+  connectSocket();
+  setStatus(serverUrl ? `Prêt (serveur: ${serverUrl})` : 'Serveur non défini', !!serverUrl);
+  setPlayPauseVisual(true);
 });
