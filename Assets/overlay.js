@@ -1,7 +1,7 @@
-// overlay.js — overlay avec OAuth (utilise /api/me pour connaître l’utilisateur)
+// overlay.js — HUD non cliquable + panneau animé via hotkey, OAuth facultatif
 
-// Par défaut: même origine (recommandé pour les cookies de session). Tu peux sauvegarder un autre domaine.
 const DEFAULT_SERVER = window.location.origin;
+const HOTKEY = { code: 'KeyO', shiftKey: true, altKey: true }; // Shift+Alt+O
 
 let serverUrl = localStorage.getItem('greg_server') || DEFAULT_SERVER;
 let guildId   = localStorage.getItem('greg_guild')  || "";
@@ -25,9 +25,14 @@ function fmtTime(s) {
 function setPlayPauseVisual(isPaused) {
   const btn = document.getElementById('playPauseBtn');
   if (!btn) return;
-  if (isPaused) { btn.textContent = '▶️'; btn.title = 'Lecture'; }
-  else          { btn.textContent = '⏸️'; btn.title = 'Pause';   }
+
+  const use = btn.querySelector('use');
+  if (use) use.setAttribute('href', isPaused ? '#icon-play' : '#icon-pause');
+
+  btn.title = isPaused ? 'Lecture' : 'Pause';
+  btn.classList.toggle('playing', !isPaused);
 }
+
 function applyRepeatVisual() {
   const btn = document.getElementById('repeatBtn');
   if (btn) btn.classList.toggle('active', !!repeatAll);
@@ -41,6 +46,23 @@ async function fetchJSON(url) {
   const r = await fetch(url, { credentials: 'include' });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
+}
+function updateAuthLinks() {
+  const loginBtn  = document.getElementById('loginBtn');
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (loginBtn)  loginBtn.href  = `${serverUrl}/login`;
+  if (logoutBtn) logoutBtn.href = `${serverUrl}/logout`;
+}
+function toggleHud(forceState) {
+  const body = document.body;
+  const wantPanel = (typeof forceState === 'boolean') ? forceState : !body.classList.contains('panel-open');
+  if (wantPanel) {
+    body.classList.add('panel-open');
+    body.classList.remove('hud-only');
+  } else {
+    body.classList.add('hud-only');
+    body.classList.remove('panel-open');
+  }
 }
 
 // ---------- OAuth awareness ----------
@@ -64,7 +86,6 @@ async function fetchMe() {
       logoutBtn.style.display = 'none';
     }
   } catch {
-    // si l’URL n’est pas le même domaine, la session ne sera pas transmise
     userId = "";
     const authBlock = document.getElementById('authBlock');
     const loginBtn  = document.getElementById('loginBtn');
@@ -112,6 +133,7 @@ async function applyServerFromInput() {
   if (!u) { setStatus("URL de serveur invalide.", false); return false; }
   serverUrl = u.origin;
   localStorage.setItem('greg_server', serverUrl);
+  updateAuthLinks();
   await fetchMe();
   await populateGuildSelect();
   setStatus(`Serveur défini: ${serverUrl}`);
@@ -140,7 +162,6 @@ function apiAction(action) {
 }
 function addTrack(text) {
   if (!text || !guildId) { setStatus('Config incomplète (guild).', false); return; }
-  // user_id omis si Oauth présent (serveur lira la session). Sinon, on tombera en erreur (normal).
   const body = { title: text, url: text, guild_id: guildId };
   return apiPost('/api/play', body).catch(e => console.warn('API error', e));
 }
@@ -203,6 +224,7 @@ function reconnectSocket() {
 
 // ---------- UI Update ----------
 function updateUI(data) {
+  // File d’attente (panneau)
   const queueEl = document.getElementById('queueList');
   queueEl.innerHTML = '';
   const queue = (data && data.queue) || [];
@@ -220,10 +242,11 @@ function updateUI(data) {
     queueEl.appendChild(row);
   });
 
+  // Texte & jaquette panneau
   const titleEl = document.getElementById('trackTitle');
   const artistEl = document.getElementById('trackArtist');
   const artwork  = document.getElementById('artwork');
-  const prog = data && data.progress || {};
+  const prog = (data && data.progress) || {};
   const elapsed = prog.elapsed ?? 0;
   const duration = prog.duration ?? 0;
 
@@ -245,18 +268,36 @@ function updateUI(data) {
     artwork.classList.remove('has-img');
   }
 
+  // Progress panneau
   document.getElementById('currentTime').textContent = fmtTime(elapsed);
   document.getElementById('totalTime').textContent   = duration ? fmtTime(duration) : "0:00";
   const pct = (duration > 0) ? Math.min(100, Math.floor(elapsed*100/duration)) : 0;
   document.getElementById('progressFill').style.width = pct + '%';
 
-  setPlayPauseVisual(data && data.is_paused);
+  // HUD (toujours à jour, non cliquable)
+  const hudTitle = document.getElementById('hudTitle');
+  const hudArt   = document.getElementById('hudArt');
+  const hudTime  = document.getElementById('hudTime');
+  const hudFill  = document.getElementById('hudProgressFill');
 
-  if (typeof data.repeat_all === 'boolean') {
-    repeatAll = data.repeat_all;
-    applyRepeatVisual();
+  hudTitle.textContent = current ? (current.title || 'Sans titre') : 'Aucune piste';
+  hudTime.textContent  = `${fmtTime(elapsed)} / ${duration ? fmtTime(duration) : '0:00'}`;
+  hudFill.style.width  = pct + '%';
+  if (data && data.thumbnail) {
+    hudArt.style.backgroundImage = `url("${data.thumbnail}")`;
+    hudArt.textContent = '';
+  } else {
+    hudArt.style.backgroundImage = '';
+    hudArt.textContent = '🎵';
   }
 
+  // Play/Pause & Repeat
+  setPlayPauseVisual(data && data.is_paused);
+  if (typeof data.repeat_all === 'boolean') {
+    repeatAll = data.repeat_all; applyRepeatVisual();
+  }
+
+  // Désactivation des boutons si pas de guild
   const disabled = !guildId;
   for (const id of ['stopBtn','prevBtn','playPauseBtn','nextBtn','repeatBtn','addBtn']) {
     const el = document.getElementById(id);
@@ -266,24 +307,37 @@ function updateUI(data) {
 
 // ---------- DOM Ready ----------
 window.addEventListener('DOMContentLoaded', async () => {
+  // Raccourci clavier HUD <-> panneau
+  window.addEventListener('keydown', (e) => {
+    if (e.code === HOTKEY.code && !!e.altKey === HOTKEY.altKey && !!e.shiftKey === HOTKEY.shiftKey) {
+      toggleHud(); e.preventDefault();
+    }
+  });
+
+  // Panneau config
+  document.getElementById('settingsToggle').addEventListener('click', () => {
+    document.getElementById('configPanel').classList.toggle('hidden');
+  });
+  document.getElementById('configClose').addEventListener('click', () => {
+    document.getElementById('configPanel').classList.add('hidden');
+  });
+
+  // URL serveur
   const serverInput = document.getElementById('configServerInput');
   if (serverInput) serverInput.value = serverUrl || '';
-  document.getElementById('settingsToggle').addEventListener('click', () => document.getElementById('configPanel').classList.toggle('hidden'));
-  document.getElementById('configClose').addEventListener('click', () => document.getElementById('configPanel').classList.add('hidden'));
+  serverInput.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') { await applyServerFromInput(); }
+  });
+
+  // Boutons config
   document.getElementById('configSave').addEventListener('click', saveConfig);
   document.getElementById('configReload').addEventListener('click', () => populateGuildSelect());
 
-  // OAuth state + guilds
+  // OAuth + guilds + socket
+  updateAuthLinks();
   await fetchMe();
   await populateGuildSelect();
-
-  // Collapse
-  const player = document.getElementById('playerContainer');
-  const collapseBtn = document.getElementById('collapseBtn');
-  collapseBtn.addEventListener('click', () => {
-    player.classList.toggle('collapsed');
-    collapseBtn.textContent = player.classList.contains('collapsed') ? '▲' : '▼';
-  });
+  connectSocket();
 
   // Input + suggestions
   const urlInput = document.getElementById('urlInput');
@@ -293,8 +347,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       const first = document.querySelector('#suggestions .suggestion-item');
       if (first) { first.click(); e.preventDefault(); return; }
       addTrack(urlInput.value.trim());
-      urlInput.value = '';
-      clearSuggestions();
+      urlInput.value = ''; clearSuggestions();
     }
     if (e.key === 'Escape') clearSuggestions();
   });
@@ -306,9 +359,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   addBtn.addEventListener('click', () => {
     const v = urlInput.value.trim();
     if (!v) return;
-    addTrack(v);
-    urlInput.value = '';
-    clearSuggestions();
+    addTrack(v); urlInput.value = ''; clearSuggestions();
   });
   document.addEventListener('click', (ev) => {
     const s = document.getElementById('suggestions');
@@ -316,7 +367,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!s.contains(ev.target) && ev.target !== urlInput) clearSuggestions();
   });
 
-  // Controls
+  // Contrôles
   document.getElementById('stopBtn').addEventListener('click', () => apiAction('stop'));
   document.getElementById('nextBtn').addEventListener('click', () => apiAction('skip'));
   document.getElementById('playPauseBtn').addEventListener('click', () => apiAction('toggle_pause'));
@@ -327,13 +378,12 @@ window.addEventListener('DOMContentLoaded', async () => {
       const res = await apiPost('/api/repeat', { guild_id: guildId });
       const json = await res.json().catch(() => ({}));
       if (typeof json.repeat_all === 'boolean') {
-        repeatAll = json.repeat_all;
-        applyRepeatVisual();
+        repeatAll = json.repeat_all; applyRepeatVisual();
       }
     } catch (e) { console.warn(e); }
   });
 
-  connectSocket();
+  // État initial
   setStatus(serverUrl ? `Prêt (serveur: ${serverUrl})` : 'Serveur non défini', !!serverUrl);
   setPlayPauseVisual(true);
 });

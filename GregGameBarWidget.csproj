@@ -26,12 +26,16 @@
     <None Include="Assets\index.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="Assets\overlay.js">
+    <None Update="Assets\overlay.css">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="Assets\overlay.css">
+    <None Update="Assets\overlay.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Assets\static\" />
   </ItemGroup>
 
 </Project>

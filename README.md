@@ -1,88 +1,174 @@
-# Greg Game Bar Widget
+# Greg – Widget Xbox Game Bar (FR)
 
-This project is a basic Xbox Game Bar widget for Windows that displays and controls your Greg music playlist.  It connects to your existing Flask/Socket.IO backend running locally (default: `http://localhost:3000`).
+Un widget **Xbox Game Bar** pour Windows qui affiche/contrôle la musique de **Greg le Consanguin**.
+Le widget charge l’overlay (HTML/JS/CSS) dans une WebView et se connecte à ton **backend Flask + Socket.IO** (par défaut `http://localhost:3000`, ou ton domaine Railway).
 
-## Features
+---
 
-- Displays the current playlist and highlights the playing track.
-- Supports adding new tracks by title/URL, pausing, resuming, skipping and stopping via buttons.
-- Connects to the backend using Socket.IO and REST APIs.
-- Runs as an Xbox Game Bar widget; it remains visible on top of full‑screen games when pinned.
-- Supports sideload deployment (no Microsoft store account required).
+## Fonctionnalités
 
-## Folder structure
+* Affiche la piste en cours (titre, vignette) + **barre de progression** (temps écoulé / total).
+* **Contrôles**: lecture/pause, suivant, redémarrer, stop, répétition de la file.
+* **Ajout rapide**: colle une URL ou une recherche ; suggestions (Top 3).
+* **Overlay double-mode**:
+
+   * **HUD minimal** (translucide, non intrusif) – affiche titre + progression.
+   * **Panneau complet** (file d’attente + contrôles).
+   * **Raccourci**: **Ctrl + Q** pour basculer HUD ↔ Panneau.
+* **Socket.IO** en temps réel + REST API.
+* **OAuth Discord (optionnel)**: bouton *Se connecter* si ton backend expose `/login` (cookies de session).
+
+---
+
+## Arborescence (projet widget)
 
 ```
 gamebar_widget/
-├── GregGameBarWidget.csproj    Project file
-├── Package.appxmanifest        Manifest with widget capabilities
-├── App.xaml                   Application definition
-├── App.xaml.cs                Application code‑behind
-├── MainPage.xaml              Widget page UI
-├── MainPage.xaml.cs           Widget page code‑behind
-├── Assets/
-│   ├── index.html            HTML overlay page loaded in the WebView
-│   ├── overlay.js            JavaScript for the overlay page
-│   └── overlay.css           Styling for the overlay page
-└── README.md                 This file
+├── GregGameBarWidget.csproj
+├── Package.appxmanifest            # Extension Game Bar (com.microsoft.gamebar.widget)
+├── App.xaml / App.xaml.cs
+├── MainPage.xaml / MainPage.xaml.cs # WebView2 -> Assets/index.html
+└── Assets/
+    ├── index.html
+    ├── overlay.js
+    └── overlay.css
 ```
 
-## How to build and sideload
+> Les fichiers `index.html`, `overlay.js`, `overlay.css` sont les mêmes que ceux utilisés côté web/Flask, adaptés pour pointer vers ton serveur.
 
-These steps assume you're running Windows 10/11 with the **Game Bar** installed.
+---
 
-1. **Enable developer mode** in Windows settings:
-   - Open *Settings → Privacy & Security → For developers*.
-   - Enable "Developer Mode" (you can disable it after installation).
+## Prérequis
 
-2. **Install Visual Studio 2022 or later** with the "Universal Windows Platform development" workload.
+* **Windows 10/11** avec **Barre de jeu Xbox** activée.
+* **Visual Studio 2022** (ou + récent) avec la charge de travail **UWP**.
+* **Mode développeur** activé :
 
-3. **Open the solution**:
-   - Create a new folder and copy the contents of this `gamebar_widget` directory into it.
-   - Open the `.csproj` file with Visual Studio.  It will load the UWP project.
+   * *Paramètres → Confidentialité et sécurité → Pour les développeurs → Mode développeur*.
 
-4. **Configure the backend URL**:
-   - In `Assets/overlay.js`, change the `const DEFAULT_SERVER = "http://localhost:3000";` to match your Flask server if needed.
+---
 
-5. **Build and sign the package**:
-   - Right–click the project in Solution Explorer → *Publish → Create App Packages…*.
-   - Choose **Sideloading** and check "Sign with existing certificate or a self‑signed certificate".
-   - If you don't have a certificate, create one by clicking "Create test certificate".  Make sure to pick a password you can remember.
-   - Choose a folder to output the package and finish the wizard.  Visual Studio will generate a `.msixbundle` file.
+## Configuration du backend
 
-6. **Distribute the package**:
-   - Copy the `.msixbundle` and the certificate `.cer` file to any machine you want to install the widget.
+1. Démarre le serveur Flask/Socket.IO (ex: `python main.py`).
+2. Depuis le **panneau de configuration** du widget (icône ⚙️ dans le HUD), saisis l’URL de ton serveur :
 
-7. **Install on other machines (no store needed)**:
-   - On each machine, double–click the `.cer` certificate and install it to the "Trusted People" store for the current user.
-   - Run the provided `install.ps1` script (see below) from a PowerShell window with administrative privileges to install the package:
+   * Local: `http://localhost:3000`
+   * Railway: `https://ton-app.up.railway.app`
+3. (Optionnel) OAuth :
+
+   * Clique **Se connecter avec Discord** (le lien pointe vers `${serverUrl}/login`).
+   * Pour que la session fonctionne, le widget doit pouvoir atteindre le **même domaine** que ton backend (les cookies de session ne passent pas entre domaines différents).
+
+---
+
+## Build & Sideload (installation hors Store)
+
+1. **Ouvre le projet** `GregGameBarWidget.csproj` dans Visual Studio.
+2. Configuration **x64** (ou ARM64 selon ta machine).
+3. **Publier** :
+
+   * Clic droit sur le projet → *Publish → Create App Packages…*
+   * Choisis **Sideloading**.
+   * **Signer**: utilise un certificat existant ou crée un **certificat de test**.
+   * Visual Studio génère un **`.msixbundle`** + le **.cer** (certificat).
+4. **Installer sur ta machine** :
+
+   * Double-clique le `.cer` → installer dans **Current User → Trusted People**.
+   * Double-clique le `.msixbundle` (ou lance `Add-AppxPackage` en PowerShell).
+5. **Installer sur une autre machine** :
+
+   * Copier le `.msixbundle` + `.cer`.
+   * Importer le `.cer` (Trusted People).
+   * Exécuter :
+
      ```powershell
-     Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-     .\install.ps1
+     Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+     Add-AppxPackage .\GregOverlay.msixbundle
      ```
 
-## install.ps1
+> Option : fournis un `install.ps1` qui fait `Import-Certificate` + `Add-AppxPackage` automatiquement.
 
-A sample PowerShell install script is provided at the repository root:
+---
 
+## Lancer le widget
+
+* **En jeu** : appuie **Win + G** pour ouvrir la Game Bar → menu **Widgets** → *Greg Game Bar Widget* → **Épingler** pour le garder visible.
+* **Par URI** :
+
+  ```text
+  ms-gamebarwidget://?widgetId=<PFN>!<WidgetId>
+  ```
+
+   * **PFN** (Package Family Name) :
+
+     ```powershell
+     Get-AppxPackage *Greg* | Select PackageFamilyName
+     ```
+   * **WidgetId** : attribut `Id` de `<uap3:AppExtension>` dans `Package.appxmanifest`.
+
+Exemple PowerShell :
+
+```powershell
+$pfn = (Get-AppxPackage *GregOverlay*).PackageFamilyName
+start "ms-gamebarwidget://?widgetId=$pfn!GregOverlayWidget"
 ```
-Import-Certificate -FilePath "./GregOverlay.cer" -CertStoreLocation Cert:\CurrentUser\TrustedPeople | Out-Null
-# Optionally allow trusted app installs (only needed once):
-# reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v "AllowAllTrustedApps" /d 1 | Out-Null
-Add-AppxPackage "./GregOverlay.msixbundle"
-Write-Host "Installation complete.  Open Xbox Game Bar (Win+G) and pin the Greg overlay widget."
-```
 
-Make sure to replace the filenames with the actual certificate and package names generated by Visual Studio.
+---
 
-## Usage
+## Utilisation
 
-- Start your Flask/Socket.IO backend (e.g. `python main.py` in your Greg project).
-- Press `Win + G` in your game to open the Xbox Game Bar.
-- Click the widgets menu and find "Greg Game Bar Widget".
-- Pin the widget so it stays visible during gameplay.
-- Use the UI to add tracks and control playback.
+* **HUD ↔ Panneau** : **Alt + Shift + O** (j'ai quelque probleme pour le changer mais on verra)
+* **Lecture/Pause** : bouton central (icône bascule Play/Pause)
+* **Suivant** : ⏭
+* **Redémarrer la piste** : ⏮
+* **Stop** : ⏹
+* **Répéter la file** : 🔁 (devient actif visuellement)
+* **Ajouter un titre/URL** : champ en haut + bouton **+**
+* **Suggestions** : s’affichent sous le champ (Top 3) → clique pour ajouter
 
-## Disclaimer
+---
 
-This project is provided as a sample.  You are responsible for complying with all policies and terms of service for Xbox Game Bar and your games.  This widget does not modify game files nor interact with the game process.  It simply renders a web page in an overlay.
+## Dépannage (FAQ)
+
+**Le widget ne s’ouvre pas dans un jeu plein écran.**
+→ Certains jeux en *exclusive fullscreen* bloquent Win+G. Active *Ouvrir la barre de jeu au-dessus des jeux en plein écran pris en charge* dans les paramètres de la Game Bar, ou passe le jeu en *fullscreen optimisé* / *fenêtré sans bordure*.
+
+**Les boutons répondent mais l’ajout dit « user\_id requis ».**
+→ Connecte-toi avec Discord (bouton **Se connecter**) pour que le backend obtienne ton `user_id` via la session.
+→ Sinon, utilise le bot directement dans Discord pour lancer Greg dans un vocal, puis contrôle via le widget.
+
+**La progression/miniature ne s’affiche pas.**
+→ Assure-toi d’utiliser la branche avec `playlist_update` enrichi (**progress**, **thumbnail**, **repeat\_all**) côté `commands/music.py`.
+
+**OAuth n’a pas l’air de fonctionner.**
+→ Les cookies de session ne sont valides que sur **le même domaine** que ton backend. Depuis le widget, configure **exactement** ton domaine (ex: `https://ton-app.up.railway.app`) dans ⚙️.
+
+**CORS / 401 / 404.**
+→ Vérifie que tes routes Flask existent (`/api/play`, `/api/pause`, `/api/skip`, `/api/playlist`, `/api/me`, `/api/guilds`, `/autocomplete`) et que Socket.IO accepte `cors_allowed_origins="*"` (ou ton domaine).
+
+---
+
+## Désinstallation
+
+* **Paramètres Windows → Applications → Applications installées** → rechercher « Greg » → **Désinstaller**,
+  ou
+* **PowerShell** :
+
+  ```powershell
+  Get-AppxPackage *GregOverlay* | Remove-AppxPackage
+  ```
+
+---
+
+## Sécurité & conformité
+
+* Le widget **n’injecte rien** dans les jeux et ne hooke **aucune API** du jeu → pas de risque *anti-cheat* lié à ce projet.
+* Respecte les CGU **Xbox Game Bar** et celles des plateformes musicales utilisées (YouTube/SoundCloud).
+
+---
+
+## Astuces
+
+* Tu peux préconfigurer `serverUrl` : ouvre ⚙️ et saisis une fois ton domaine Railway ; la valeur est mémorisée (localStorage).
+* Tu peux lancer directement le widget avec un **raccourci** `.url` pointant vers l’URI `ms-gamebarwidget://…`.
