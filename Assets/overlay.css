@@ -1,6 +1,4 @@
-/* overlay.css
- * Basic styling for the Greg overlay page.
- */
+/* overlay.css */
 
 html, body {
   margin: 0;
@@ -41,29 +39,24 @@ button {
   border-radius: 4px;
   cursor: pointer;
 }
+button:hover { background: #555; }
 
-button:hover {
-  background: #555;
-}
+/* Réglages */
+.settings { margin-bottom: 4px; }
+.status { font-size: 11px; color: #aaa; margin-top: 2px; min-height: 14px; }
 
+/* Playlist */
 #playlist {
   list-style: none;
-  margin: 0;
+  margin: 6px 0 0;
   padding: 0;
   max-height: 120px;
   overflow-y: auto;
 }
+#playlist li { font-size: 12px; padding: 2px 0; }
+#playlist li.playing { color: #7cfc00; }
 
-#playlist li {
-  font-size: 12px;
-  padding: 2px 0;
-}
-
-#playlist li.playing {
-  color: #7cfc00;
-}
-
-/* --- Autocomplete --- */
+/* Autocomplete */
 .sugg {
   list-style: none;
   margin: 6px 0 0;
@@ -74,18 +67,11 @@ button:hover {
   max-height: 120px;
   overflow-y: auto;
 }
-
-.sugg.hidden {
-  display: none;
-}
-
+.sugg.hidden { display: none; }
 .sugg li {
   padding: 6px 8px;
   cursor: pointer;
   font-size: 12px;
   color: #fff;
 }
-
-.sugg li:hover {
-  background: #444;
-}
+.sugg li:hover { background: #444; }
