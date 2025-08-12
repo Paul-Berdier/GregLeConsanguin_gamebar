@@ -1,0 +1,33 @@
+<!doctype html>
+<!--
+  This page is loaded inside the Xbox Game Bar widget.  It connects via Socket.IO to your
+  Flask/Socket.IO backend to display and control the playlist.  Modify DEFAULT_SERVER
+  if your server runs on a different host or port.
+-->
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Greg Overlay</title>
+  <link rel="stylesheet" href="overlay.css" />
+  <!-- Socket.IO v4 client (served from CDN) -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script defer src="overlay.js"></script>
+</head>
+<body>
+<div class="container">
+  <ul id="playlist"></ul>
+
+  <div class="row">
+    <input id="entry" placeholder="URL ou recherche…" />
+    <button data-action="pause">Pause</button>
+    <button data-action="resume">Resume</button>
+    <button data-action="skip">Skip</button>
+    <button data-action="stop">Stop</button>
+  </div>
+
+  <!-- Suggestions (top 3) -->
+  <ul id="suggestions" class="sugg hidden"></ul>
+</div>
+</body>
+</html>

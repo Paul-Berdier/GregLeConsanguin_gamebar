@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Target the Universal Windows Platform.  The minimum version is Windows 10, build 17763. -->
+    <TargetFramework>net6.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>false</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <OutputType>AppContainerExe</OutputType>
+    <!-- Disable automatic app packaging on build; use the publish wizard instead -->
+    <GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>
+    <!-- Enables implicit generation of UWP assets -->
+    <EnableMSIXTooling>true</EnableMSIXTooling>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Socket.IO client for .NET -->
+    <PackageReference Include="SocketIOClient" Version="3.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Include the manifest -->
+    <AppxManifest Include="Package.appxmanifest" />
+    <!-- Copy web assets -->
+    <None Include="Assets\index.html">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="Assets\overlay.js">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="Assets\overlay.css">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

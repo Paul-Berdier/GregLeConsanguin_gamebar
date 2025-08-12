@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  IgnorableNamespaces="uap mp">
+  <Identity
+    Name="GregOverlay.Widget"
+    Publisher="CN=GregOverlay"
+    Version="1.0.0.0" />
+  <Properties>
+    <DisplayName>Greg Game Bar Widget</DisplayName>
+    <PublisherDisplayName>Greg</PublisherDisplayName>
+    <!-- The main logo displayed in the widget picker; replace with your own artwork if desired -->
+    <Logo>Assets\Square150x150Logo.png</Logo>
+  </Properties>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+    <Application Id="App"
+                 Executable="$targetnametoken$.exe"
+                 EntryPoint="GregOverlay.App">
+      <uap:VisualElements
+        DisplayName="Greg Game Bar Widget"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        Description="Greg Game Bar Widget"
+        BackgroundColor="transparent" />
+      <Extensions>
+        <!-- Declare this app as a Game Bar widget -->
+        <uap:Extension Category="windows.gameBarWidget">
+          <uap:GameBarWidget
+            Id="GregMusicOverlay"
+            DisplayName="Greg Music"
+            Description="Contrôlez Greg dans la Game Bar" />
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <!-- Internet access is required to talk to the local Flask backend -->
+    <Capability Name="internetClient" />
+  </Capabilities>
+</Package>
