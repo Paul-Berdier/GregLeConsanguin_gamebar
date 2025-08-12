@@ -15,7 +15,7 @@
     <Logo>Assets\Square150x150Logo.png</Logo>
   </Properties>
   <Resources>
-    <Resource Language="en-us" />
+    <Resource Language="fr-FR" />
   </Resources>
   <Applications>
     <Application Id="App"
