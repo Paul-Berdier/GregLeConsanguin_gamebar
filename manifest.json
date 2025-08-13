@@ -1,0 +1,30 @@
+{
+  "manifest_version": 1,
+  "type": "WebApp",
+  "uuid": "greg-overlay-dev-example",
+  "version": "1.0.0",
+  "name": "Greg Overlay Dev",
+  "meta": {
+    "description": "Widget Overwolf pour contrôler la musique Greg en overlay",
+    "author": "User",
+    "icon": "icon.png"
+  },
+  "permissions": [
+    "Desktop",
+    "GameEvents",
+    "GameInfo"
+  ],
+  "launch_everywhere": true,
+  "windows": {
+    "main": {
+      "file": "index.html",
+      "transparent": true,
+      "show_in_taskbar": false,
+      "clickthrough": true,
+      "native_window": {
+        "desktop": true,
+        "in_game": true
+      }
+    }
+  }
+}

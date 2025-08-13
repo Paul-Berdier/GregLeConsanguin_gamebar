@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Greg Overlay</title>
+  <link rel="stylesheet" href="overlay.css" />
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script defer src="overlay.js"></script>
+</head>
+<body class="hud-only">
+<!-- SVG sprite (hidden) -->
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="icon-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></symbol>
+  <symbol id="icon-pause" viewBox="0 0 24 24"><path fill="currentColor" d="M6 5h4v14H6zm8 0h4v14h-4z"/></symbol>
+  <symbol id="icon-stop" viewBox="0 0 24 24"><path fill="currentColor" d="M6 6h12v12H6z"/></symbol>
+  <symbol id="icon-prev" viewBox="0 0 24 24"><path fill="currentColor" d="M6 6h2v12H6zm3 6l9 6V6z"/></symbol>
+  <symbol id="icon-next" viewBox="0 0 24 24"><path fill="currentColor" d="M6 6l9 6-9 6V6zm10 0h2v12h-2z"/></symbol>
+  <symbol id="icon-repeat" viewBox="0 0 24 24"><path fill="currentColor" d="M17 1l4 4-4 4V6H7a3 3 0 0 0-3 3v1H2V9a5 5 0 0 1 5-5h10V1zm-10 22l-4-4 4-4v3h10a3 3 0 0 0 3-3v-1h2v1a5 5 0 0 1-5 5H7v3z"/></symbol>
+</svg>
+
+<!-- HUD minimal (visible en jeu, non-cliquable) -->
+<div class="hud" id="hud">
+  <div class="hud-art" id="hudArt">🎵</div>
+  <div class="hud-center">
+    <div class="hud-title" id="hudTitle">Aucune piste</div>
+    <div class="hud-progress">
+      <div class="hud-progress-fill" id="hudProgressFill"></div>
+    </div>
+  </div>
+  <div class="hud-time" id="hudTime">0:00 / 0:00</div>
+</div>
+
+<!-- Panneau complet (affiché via le hotkey) -->
+<div class="player-container" id="playerContainer">
+  <div class="player-content">
+    
+    <button class="settings-toggle" id="settingsToggle" title="Configuration">⚙️</button>
+    <!-- Barre d’ajout + suggestions -->
+    <div class="add-url-container">
+      <input type="text" id="urlInput" class="add-url-input"
+             placeholder="Ajouter une URL ou rechercher..." autocomplete="off" />
+      <button class="add-url-btn" id="addBtn" title="Ajouter">+</button>
+      <div class="suggestions-container hidden" id="suggestions"></div>
+    </div>
+
+    <!-- Informations piste -->
+    <div class="track-info">
+      <div class="track-artwork" id="artwork">🎵</div>
+      <div class="track-title" id="trackTitle">Aucune piste</div>
+      <div class="track-artist" id="trackArtist">En attente...</div>
+    </div>
+
+    <!-- Progression -->
+    <div class="progress-container">
+      <div class="progress-bar" id="progressBar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="progress-time">
+        <span id="currentTime">0:00</span>
+        <span id="totalTime">0:00</span>
+      </div>
+    </div>
+
+    <!-- Contrôles -->
+    <div class="controls-main">
+      <button class="control-btn" id="stopBtn" title="Arrêter">
+        <svg class="icon"><use href="#icon-stop"/></svg>
+      </button>
+
+      <button class="control-btn" id="prevBtn" title="Recommencer">
+        <svg class="icon"><use href="#icon-prev"/></svg>
+      </button>
+
+      <button class="control-btn primary" id="playPauseBtn" title="Lecture">
+        <svg class="icon"><use href="#icon-play"/></svg>
+      </button>
+
+      <button class="control-btn" id="nextBtn" title="Suivant">
+        <svg class="icon"><use href="#icon-next"/></svg>
+      </button>
+
+      <button class="control-btn" id="repeatBtn" title="Répéter la file">
+        <svg class="icon"><use href="#icon-repeat"/></svg>
+      </button>
+    </div>
+
+
+    <!-- File d’attente -->
+    <div class="queue-container">
+      <div class="queue-title">File d'attente</div>
+      <div id="queueList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Panneau de configuration -->
+<div class="config-panel hidden" id="configPanel">
+  <div class="config-header">
+    <span class="config-title">Configuration</span>
+    <button class="config-close" id="configClose" title="Fermer">✕</button>
+  </div>
+
+  <!-- Domaine serveur -->
+  <input type="text" id="configServerInput" class="config-input"
+         placeholder="https://ton-app.up.railway.app" autocomplete="off" />
+
+  <!-- État OAuth / boutons -->
+  <div id="authBlock" class="status-message" style="margin:8px 0;"></div>
+  <div id="authButtons" style="display:flex; gap:8px; margin-bottom:8px;">
+    <a class="config-save" href="/login"  id="loginBtn"  style="text-align:center; text-decoration:none; display:none;">
+      Se connecter avec Discord
+    </a>
+    <a class="config-save" href="/logout" id="logoutBtn" style="text-align:center; text-decoration:none; background:#ef4444; display:none;">
+      Se déconnecter
+    </a>
+  </div>
+
+  <!-- Choix du serveur Discord -->
+  <select id="configGuild" class="config-input" title="Serveur Discord">
+    <option value="">— Chargement… —</option>
+  </select>
+
+  <div style="display:flex; gap:8px; margin-top:6px;">
+    <button class="config-save" id="configSave"   style="flex:1;">Sauvegarder</button>
+    <button class="config-save" id="configReload" style="flex:0 0 160px; background:#475569;">Recharger serveurs</button>
+  </div>
+
+  <div id="statusMessage" class="status-message"></div>
+</div>
+</body>
+</html>
